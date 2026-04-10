@@ -4,7 +4,7 @@ import os
 
 # ★ 分けた部品（ファイル）をここに読み込みます！
 from selector import PDFSelector
-from calculator import extract_and_calculate
+from calculator import open_calculator
 
 class DangoDocumentScanner:
     def __init__(self, root):
@@ -47,7 +47,7 @@ class DangoDocumentScanner:
     def set_rois(self):
         self.root.withdraw() 
         try:
-            # ★ 別のファイルに分けた「範囲指定機能」を使います！
+            # 別のファイルに分けた「範囲指定機能」を使います
             selector = PDFSelector()
             selected_rois = selector.select(self.pdf_path)
             
@@ -65,12 +65,11 @@ class DangoDocumentScanner:
         if not self.pdf_path or not self.rois:
             return
             
-        # ★ もう一つのファイルに分けた「計算機能」にお願いします！
-        result_text, success = extract_and_calculate(self.pdf_path, self.rois)
+        # ★ 計算専用のウィンドウを呼び出します！
+        success, result_text = open_calculator(self.pdf_path, self.rois, self.root)
         
-        if success:
-            messagebox.showinfo("計算結果です！", result_text)
-        else:
+        # エラーが起きた時だけメッセージボックスを出します
+        if not success:
             messagebox.showerror("えれぇ…っ（エラー）", result_text)
 
 # ここからスタートです
