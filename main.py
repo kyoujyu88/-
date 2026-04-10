@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 
-# ★ 分けた部品（ファイル）をここに読み込みます！
 from selector import PDFSelector
 from calculator import open_calculator
 
@@ -47,16 +46,20 @@ class DangoDocumentScanner:
     def set_rois(self):
         self.root.withdraw() 
         try:
-            # 別のファイルに分けた「範囲指定機能」を使います
             selector = PDFSelector()
-            selected_rois = selector.select(self.pdf_path)
+            # ★ 引数に「今の自己の枠（self.rois）」を渡すように変更しました！
+            selected_rois = selector.select(self.pdf_path, self.rois)
             
-            if selected_rois:
-                self.rois = selected_rois
+            self.rois = selected_rois
+            
+            # 枠が1つ以上あれば計算ボタンを押せるようにします
+            if len(self.rois) > 0:
                 messagebox.showinfo("成功です！", f"{len(self.rois)} 箇所の範囲を覚えました！")
                 self.btn_calc.config(state=tk.NORMAL)
             else:
-                messagebox.showwarning("キャンセル", "範囲が選ばれませんでした…")
+                messagebox.showwarning("お知らせ", "範囲が選ばれていません…")
+                self.btn_calc.config(state=tk.DISABLED)
+                
         except Exception as e:
             messagebox.showerror("えれぇ…っ（エラー）", f"画面が開けませんでした…\n{e}")
         self.root.deiconify() 
@@ -65,14 +68,11 @@ class DangoDocumentScanner:
         if not self.pdf_path or not self.rois:
             return
             
-        # ★ 計算専用のウィンドウを呼び出します！
         success, result_text = open_calculator(self.pdf_path, self.rois, self.root)
         
-        # エラーが起きた時だけメッセージボックスを出します
         if not success:
             messagebox.showerror("えれぇ…っ（エラー）", result_text)
 
-# ここからスタートです
 if __name__ == "__main__":
     root = tk.Tk()
     app = DangoDocumentScanner(root)
