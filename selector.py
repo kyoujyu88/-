@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import os
 import tkinter as tk
-from tkinter import messagebox # ★ 結果を表示するためにメッセージボックスを使います！
 
 class PDFSelector:
     def __init__(self):
@@ -13,19 +12,20 @@ class PDFSelector:
         self.display_img = None
         self.clean_img = None
         
-        # 裏方さんとして必要なデータを覚えておきます
         self.pdf_h = None
         self.textpage = None
         self.scale = 1.5
+        
+        # 新しく追加するプレビュー画面のためのメモ帳です
+        self.info_window = None
+        self.lbl_preview = None
 
     def redraw_image(self):
         """現在の枠をすべて描き直す裏方さんです"""
         self.display_img = self.clean_img.copy()
         for i, roi in enumerate(self.rois):
             rx, ry, w, h = roi
-            # 枠を描きます
             cv2.rectangle(self.display_img, (rx, ry), (rx+w, ry+h), (255, 0, 0), 2)
-            # 番号を描きます
             cv2.putText(self.display_img, str(i+1), (rx, ry - 5), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
         cv2.imshow("PDF Selector", self.display_img)
@@ -48,35 +48,26 @@ class PDFSelector:
             ry = min(self.iy, y)
             if w > 5 and h > 5:
                 self.rois.append((rx, ry, w, h))
-                # 画面を描き直して、新しい枠を表示します
                 self.redraw_image()
 
-                # ==========================================
-                # ★ ここが新しい機能です！ ★
-                # マウスを離した瞬間、その場所の文字を読み取って表示します
-                # ==========================================
-                
-                # 画像の座標をPDF本来の座標に変換します
+                # --- 読み取ってリアルタイムで表示します！ ---
                 pdf_left = rx / self.scale
                 pdf_right = (rx + w) / self.scale
-                # 上下をひっくり返す魔法の計算式です
                 pdf_top = self.pdf_h - (ry / self.scale)
                 pdf_bottom = self.pdf_h - ((ry + h) / self.scale)
                 
-                # 文字を抽出します…！
                 if self.textpage:
                     text = self.textpage.get_text_bounded(left=pdf_left, bottom=pdf_bottom, right=pdf_right, top=pdf_top)
                     clean_text = text.strip()
                     
-                    # 読み取った文字を、小さなメッセージボックスで画面の真ん中にポンッと表示します
-                    if clean_text:
-                        messagebox.showinfo("✨ 読み取りプレビュー", f"枠{len(self.rois)} の読み取り結果はこちらです！\n\n[{clean_text}]")
-                    else:
-                        messagebox.showwarning("✨ 読み取りプレビュー", f"枠{len(self.rois)} には、文字が見つかりませんでした…っ")
+                    # 邪魔なOKボタンの代わりに、プレビュー画面の文字をパッと書き換えます！
+                    if self.lbl_preview:
+                        if clean_text:
+                            self.lbl_preview.config(text=f"枠{len(self.rois)} :  {clean_text}", fg="blue")
+                        else:
+                            self.lbl_preview.config(text=f"枠{len(self.rois)} :  (文字が見つかりません…)", fg="red")
 
     def select(self, pdf_path, existing_rois=None):
-        """画面を開く関数です"""
-        # 前の枠があれば引き継ぎます
         if existing_rois:
             self.rois = existing_rois.copy()
         else:
@@ -85,39 +76,66 @@ class PDFSelector:
         if not os.path.exists(pdf_path):
             return []
 
-        # --- ここでPDFを開いて、裏方さん用のデータをセットします ---
         pdf = pdfium.PdfDocument(pdf_path)
         page = pdf[0]
-        # PDF本来のサイズ（高さ）を覚えておきます
         self.pdf_h = page.get_size()[1]
-        # 文字データの層を抜き出して、いつでも読めるように準備しておきます！
         self.textpage = page.get_textpage()
         
-        # 画面に表示するために画像化します
         bitmap = page.render(scale=self.scale, rev_byteorder=False)
         pil_image = bitmap.to_pil()
-        
         self.clean_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         
+        # ==========================================
+        # ★ 新機能：使い方＆プレビュー専用の画面を開きます！
+        # ==========================================
+        self.info_window = tk.Toplevel()
+        self.info_window.title("使い方 ＆ プレビュー")
+        self.info_window.geometry("380x200")
+        # OpenCVの裏に隠れないように、常に一番手前に表示させる魔法です
+        self.info_window.attributes("-topmost", True)
+        
+        # 使い方の表示
+        tk.Label(self.info_window, text="【 使い方 】", font=("MS UI Gothic", 12, "bold")).pack(pady=(10, 5))
+        instructions = "1. マウスでドラッグして枠を囲む\n2. 「c」キーで一つ前の枠を消す\n3. 「Enter」キーで決定して完了する"
+        tk.Label(self.info_window, text=instructions, justify="left", font=("MS UI Gothic", 10)).pack()
+        
+        # プレビューの表示
+        tk.Label(self.info_window, text="【 読み取りプレビュー 】", font=("MS UI Gothic", 12, "bold"), fg="blue").pack(pady=(15, 5))
+        self.lbl_preview = tk.Label(self.info_window, text="(枠を囲むとここに結果がすぐ出ます)", font=("MS UI Gothic", 14, "bold"))
+        self.lbl_preview.pack()
+
+        # ==========================================
+
         cv2.namedWindow("PDF Selector")
         cv2.setMouseCallback("PDF Selector", self.mouse_callback)
-        
-        # 最初から枠を描画しておきます
         self.redraw_image()
         
-        print("マウスで枠を囲んでくださいね。終わったら「Enter」です。")
-        print("間違えた時は「c」を押すと、一つ前の枠を取り消せます！")
-        
         while True:
-            key = cv2.waitKey(1) & 0xFF
+            # 待ち時間を10ミリ秒にしてキーボードを見張ります
+            key = cv2.waitKey(10) & 0xFF
             if key == 13: # Enterキー
                 break
             elif key == ord('c'):
-                # cを押したら、リストの一番最後を消して描き直します
                 if self.rois:
                     self.rois.pop()
                     self.redraw_image()
-                    print("一つ前の枠を取り消しました！")
+                    # cキーで消した時も、画面にメッセージを出します
+                    if self.lbl_preview:
+                        self.lbl_preview.config(text="一つ前の枠を取り消しました！", fg="gray")
+            
+            # ★ OpenCVの画面を開きながら、プレビュー画面も同時に動かし続けます
+            try:
+                self.info_window.update()
+            except tk.TclError:
+                # ユーザーがプレビュー画面の「×」ボタンを押してしまった時は無視します
+                pass
                 
         cv2.destroyAllWindows()
+        
+        # 枠選びが終わったら、プレビュー画面も一緒に閉じます
+        try:
+            self.info_window.destroy()
+        except:
+            pass
+            
         return self.rois
