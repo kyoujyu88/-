@@ -8,114 +8,117 @@ from formulas import AVAILABLE_FORMULAS, extract_number
 class InteractiveCalculator:
     def __init__(self, parent, extracted_texts):
         self.window = tk.Toplevel(parent)
-        self.window.title("🧮 計算と結果チェック画面")
-        self.window.geometry("500x600")
+        self.window.title("🧮 一括計算と結果チェック画面")
+        
+        # 表がしっかり入るように、画面の「横幅」を広くします！
+        self.window.geometry("950x400")
         
         self.texts = extracted_texts
         self.options = [f"枠{i+1}: {text}" for i, text in enumerate(self.texts)]
         self.formula_names = list(AVAILABLE_FORMULAS.keys())
 
-        # 画面上部のタイトル
-        tk.Label(self.window, text="計算と結果チェック画面", font=("", 14, "bold")).pack(pady=10)
+        tk.Label(self.window, text="複数の計算を一度に設定して、一括でチェックできます！", font=("MS UI Gothic", 14, "bold")).pack(pady=15)
 
-        # 入力フォーム用のフレーム（設計図のように左と右で揃えます）
-        form_frame = tk.Frame(self.window)
-        form_frame.pack(pady=10, padx=20, fill="x")
+        # 表のようなレイアウトを作るためのフレームです
+        table_frame = tk.Frame(self.window)
+        table_frame.pack(pady=5, padx=10, fill="x")
 
-        # 【1行目】 対象1
-        tk.Label(form_frame, text="対象1").grid(row=0, column=0, sticky="e", pady=8, padx=10)
-        self.combo_a = ttk.Combobox(form_frame, values=self.options, width=40, state="readonly")
-        self.combo_a.grid(row=0, column=1, sticky="w", pady=8)
+        # --- 表の見出しを作ります ---
+        headers = ["対象1", "計算式", "対象2", "計算結果", "チェック対象", "チェック結果"]
+        for col, text in enumerate(headers):
+            tk.Label(table_frame, text=text, font=("MS UI Gothic", 10, "bold")).grid(row=0, column=col, padx=5, pady=5)
 
-        # 【2行目】 対象2
-        tk.Label(form_frame, text="対象2").grid(row=1, column=0, sticky="e", pady=8, padx=10)
-        self.combo_b = ttk.Combobox(form_frame, values=self.options, width=40, state="readonly")
-        self.combo_b.grid(row=1, column=1, sticky="w", pady=8)
-
-        # 【3行目】 計算式
-        tk.Label(form_frame, text="計算式").grid(row=2, column=0, sticky="e", pady=8, padx=10)
-        self.combo_formula = ttk.Combobox(form_frame, values=self.formula_names, width=40, state="readonly")
-        self.combo_formula.grid(row=2, column=1, sticky="w", pady=8)
-
-        # 【4行目】 結果（最初は空っぽにしておきます）
-        tk.Label(form_frame, text="結果").grid(row=3, column=0, sticky="e", pady=8, padx=10)
-        self.lbl_calc_result = tk.Label(form_frame, text="---", font=("", 12, "bold"), fg="blue")
-        self.lbl_calc_result.grid(row=3, column=1, sticky="w", pady=8)
-
-        # ここで少し線を引いて区切ります
-        ttk.Separator(form_frame, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=15)
-
-        # 【5行目】 チェック対象
-        tk.Label(form_frame, text="チェック対象").grid(row=5, column=0, sticky="e", pady=8, padx=10)
-        self.combo_compare = ttk.Combobox(form_frame, values=["（比較しない）"] + self.options, width=40, state="readonly")
-        self.combo_compare.current(0)
-        self.combo_compare.grid(row=5, column=1, sticky="w", pady=8)
-
-        # 【6行目】 チェック結果
-        tk.Label(form_frame, text="チェック結果").grid(row=6, column=0, sticky="e", pady=8, padx=10)
-        self.lbl_check_result = tk.Label(form_frame, text="---", font=("", 12, "bold"))
-        self.lbl_check_result.grid(row=6, column=1, sticky="w", pady=8)
-
-        # 実行ボタン
-        btn_frame = tk.Frame(self.window)
-        btn_frame.pack(pady=10)
-        tk.Button(btn_frame, text="計算とチェックを実行", command=self.run_calculation, bg="lightgreen", width=20, font=("", 10, "bold")).pack()
-
-        # --- 手書きの図の下の部分（読み取ったデータ一覧） ---
-        list_frame = tk.LabelFrame(self.window, text="【参考】 読み取ったデータの一覧")
-        list_frame.pack(fill="both", expand=True, padx=20, pady=(10, 20))
+        # 複数行の部品（コンボボックスなど）を覚えておくためのリストです
+        self.row_widgets = []
         
-        list_text = tk.Text(list_frame, height=6, state="normal", bg="#f8f9fa", font=("", 10))
-        list_text.pack(fill="both", expand=True, padx=10, pady=10)
-        for i, text in enumerate(self.texts):
-            list_text.insert("end", f"枠{i+1} : {text}\n")
-        list_text.config(state="disabled")
+        # ひとまず5行分の入力欄を作りますね！（数字を変えれば何行でも増やせます）
+        NUM_ROWS = 5 
+
+        for i in range(NUM_ROWS):
+            # 1. 対象1
+            combo_a = ttk.Combobox(table_frame, values=["（なし）"] + self.options, width=15, state="readonly")
+            combo_a.current(0) # 最初は「（なし）」にしておきます
+            combo_a.grid(row=i+1, column=0, padx=5, pady=5)
+
+            # 2. 計算式
+            combo_f = ttk.Combobox(table_frame, values=["（なし）"] + self.formula_names, width=22, state="readonly")
+            combo_f.current(0)
+            combo_f.grid(row=i+1, column=1, padx=5, pady=5)
+
+            # 3. 対象2
+            combo_b = ttk.Combobox(table_frame, values=["（なし）"] + self.options, width=15, state="readonly")
+            combo_b.current(0)
+            combo_b.grid(row=i+1, column=2, padx=5, pady=5)
+
+            # 4. 計算結果
+            lbl_calc = tk.Label(table_frame, text="---", width=12, fg="blue", font=("MS UI Gothic", 11, "bold"))
+            lbl_calc.grid(row=i+1, column=3, padx=5, pady=5)
+
+            # 5. チェック対象
+            combo_c = ttk.Combobox(table_frame, values=["（比較しない）"] + self.options, width=15, state="readonly")
+            combo_c.current(0)
+            combo_c.grid(row=i+1, column=4, padx=5, pady=5)
+
+            # 6. チェック結果
+            lbl_chk = tk.Label(table_frame, text="---", width=20, font=("MS UI Gothic", 11, "bold"))
+            lbl_chk.grid(row=i+1, column=5, padx=5, pady=5)
+
+            # 1行分の部品をセットにして、リストに保存しておきます
+            self.row_widgets.append({
+                'a': combo_a, 'f': combo_f, 'b': combo_b,
+                'calc_res': lbl_calc, 'comp': combo_c, 'chk_res': lbl_chk
+            })
+
+        # 一括実行ボタン
+        tk.Button(self.window, text="✨ 一括で計算とチェックを実行 ✨", command=self.run_calculation, bg="lightgreen", width=35, font=("MS UI Gothic", 11, "bold")).pack(pady=20)
 
     def run_calculation(self):
-        """実行ボタンが押された時の処理です"""
-        idx_a = self.combo_a.current()
-        idx_b = self.combo_b.current()
-        idx_f = self.combo_formula.current()
-        idx_c = self.combo_compare.current()
+        """実行ボタンが押された時、全行を一気に処理します！"""
+        for row in self.row_widgets:
+            idx_a = row['a'].current()
+            idx_f = row['f'].current()
+            idx_b = row['b'].current()
+            idx_c = row['comp'].current()
 
-        # 表示をリセットします
-        self.lbl_calc_result.config(text="---", fg="black")
-        self.lbl_check_result.config(text="---", fg="black")
+            # まず、前の結果の表示をリセットします
+            row['calc_res'].config(text="---", fg="black")
+            row['chk_res'].config(text="---", fg="black")
 
-        if idx_a == -1 or idx_b == -1 or idx_f == -1:
-            messagebox.showwarning("確認", "対象1、対象2、計算式をすべて選んでくださいね。")
-            return
+            # 「（なし）」が選ばれている行は、計算せずに飛ばします
+            if idx_a == 0 or idx_b == 0 or idx_f == 0:
+                continue
 
-        text_a = self.texts[idx_a]
-        text_b = self.texts[idx_b]
-        formula_name = self.formula_names[idx_f]
-        
-        try:
-            # formulas.py に計算をお願いします
-            calc_func = AVAILABLE_FORMULAS[formula_name]
-            calculated_value, _ = calc_func(text_a, text_b)
+            # リストの0番目に「（なし）」を追加したので、実際のテキストを取り出す時は -1 します
+            text_a = self.texts[idx_a - 1]
+            text_b = self.texts[idx_b - 1]
+            formula_name = self.formula_names[idx_f - 1]
             
-            # 【4行目】結果のラベルに数値を書き込みます
-            self.lbl_calc_result.config(text=str(calculated_value), fg="blue")
-
-            # 【6行目】チェック対象と答え合わせをします
-            if idx_c > 0: 
-                compare_text = self.texts[idx_c - 1]
-                compare_val = extract_number(compare_text)
+            try:
+                # formulas.py に計算をお任せします
+                calc_func = AVAILABLE_FORMULAS[formula_name]
+                calculated_value, _ = calc_func(text_a, text_b)
                 
-                if calculated_value == compare_val:
-                    self.lbl_check_result.config(text="💮 一致しました！", fg="green")
-                else:
-                    self.lbl_check_result.config(text=f"💦 不一致 (対象の枠の値: {compare_val})", fg="red")
-            else:
-                self.lbl_check_result.config(text="（比較なし）", fg="gray")
+                # 計算結果を表示します
+                row['calc_res'].config(text=str(calculated_value), fg="blue")
 
-        except Exception as e:
-            self.lbl_calc_result.config(text="エラー", fg="red")
-            self.lbl_check_result.config(text="---")
-            messagebox.showerror("エラー", f"計算に失敗しました…\n{e}")
+                # 答え合わせ（比較）をします
+                if idx_c > 0: 
+                    compare_text = self.texts[idx_c - 1]
+                    compare_val = extract_number(compare_text)
+                    
+                    if calculated_value == compare_val:
+                        row['chk_res'].config(text="✅ 一致！", fg="green")
+                    else:
+                        row['chk_res'].config(text=f"❌ ズレ ({compare_val})", fg="red")
+                else:
+                    row['chk_res'].config(text="❓ (比較なし)", fg="gray")
+
+            except Exception:
+                row['calc_res'].config(text="エラー", fg="red")
+                row['chk_res'].config(text="---")
 
 def open_calculator(pdf_path, rois, parent_root):
+    """メイン画面から呼ばれる、PDFを読み取ってウィンドウを開く関数です"""
     try:
         pdf = pdfium.PdfDocument(pdf_path)
         page = pdf[0]
