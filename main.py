@@ -1,87 +1,80 @@
-import pypdfium2 as pdfium
-import cv2
-import numpy as np
+import tkinter as tk
+from tkinter import filedialog, messagebox
 import os
 
-def select_and_extract_text(pdf_path):
-    if not os.path.exists(pdf_path):
-        print("【エラー】PDFファイルが見つかりません…")
-        return []
+# ★ 分けた部品（ファイル）をここに読み込みます！
+from selector import PDFSelector
+from calculator import extract_and_calculate
 
-    # 1. PDFを開いて1ページ目を取得します
-    pdf = pdfium.PdfDocument(pdf_path)
-    page = pdf[0]
-    
-    # PDF本来のサイズ（ポイント数）を覚えておきます
-    pdf_w, pdf_h = page.get_size()
-    
-    # 2. 画面に表示するために画像化します
-    # ※画面からはみ出してしまう場合は、この 1.5 を 1.0 などに下げてくださいね
-    scale = 1.5
-    bitmap = page.render(scale=scale, rev_byteorder=False)
-    pil_image = bitmap.to_pil()
-    img_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-    
-    print("==================================================")
-    print(" 🖱️ 画像が表示されたら、以下の手順で操作してください")
-    print(" 1. 読み取りたい文字をマウスで四角くドラッグして囲みます")
-    print(" 2. 囲んだら「スペースキー」を押して決定します（青い枠になります）")
-    print(" 3. 複数の場所を選びたい場合は、1と2を繰り返します")
-    print(" 4. 選び終わったら「Escキー」を押してください")
-    print("==================================================")
-    
-    # 3. マウスで複数領域を選択するGUIを呼び出します
-    rois = cv2.selectROIs("Select Areas (Space: Confirm, Esc: Finish)", img_bgr, showCrosshair=True, fromCenter=False)
-    cv2.destroyAllWindows()
-    
-    # 文字データの層を取り出します
-    textpage = page.get_textpage()
-    results = []
-    
-    print("\n--- 📝 読み取り結果 ---")
-    for i, roi in enumerate(rois):
-        x, y, w, h = roi
+class DangoDocumentScanner:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("書類読み取りシステム")
+        self.root.geometry("400x320")
         
-        # 選択されなかった（空っぽの）場合は飛ばします
-        if w == 0 or h == 0:
-            continue
+        self.pdf_path = ""
+        self.rois = []
+        
+        title_label = tk.Label(root, text="📄 自動計算システム", font=("", 16, "bold"))
+        title_label.pack(pady=20)
+        
+        self.btn_select = tk.Button(root, text="1. PDFファイルを選ぶ", command=self.select_pdf, width=25, height=2)
+        self.btn_select.pack(pady=5)
+        
+        self.lbl_path = tk.Label(root, text="ファイルが選ばれていません…", fg="gray")
+        self.lbl_path.pack(pady=(0, 10))
+        
+        self.btn_roi = tk.Button(root, text="2. 読み取り範囲を設定する", command=self.set_rois, width=25, height=2, state=tk.DISABLED)
+        self.btn_roi.pack(pady=5)
+        
+        self.btn_calc = tk.Button(root, text="3. 読み取って計算する！", command=self.calculate_data, width=25, height=2, state=tk.DISABLED)
+        self.btn_calc.pack(pady=5)
+
+    def select_pdf(self):
+        filepath = filedialog.askopenfilename(
+            title="PDFファイルを選んでくださいね",
+            filetypes=[("PDFファイル", "*.pdf")]
+        )
+        if filepath:
+            self.pdf_path = filepath
+            filename = os.path.basename(filepath)
+            self.lbl_path.config(text=f"選択中: {filename}", fg="blue")
             
-        # 4. 画像の座標を、PDF本来の座標に変換します（魔法の計算式です！）
-        # 画像サイズに合わせて掛けた倍率（scale）で割って元に戻します
-        pdf_left = x / scale
-        pdf_right = (x + w) / scale
-        
-        # 上下のY座標は、画像(左上が0)とPDF(左下が0)で逆転しているので、引き算でひっくり返します
-        img_top_in_pdf = y / scale
-        img_bottom_in_pdf = (y + h) / scale
-        
-        pdf_top = pdf_h - img_top_in_pdf
-        pdf_bottom = pdf_h - img_bottom_in_pdf
-        
-        # 5. 計算した座標を使って、文字を抽出します
-        text = textpage.get_text_bounded(left=pdf_left, bottom=pdf_bottom, right=pdf_right, top=pdf_top)
-        
-        # 前後の余分な空白や改行を綺麗にお掃除します
-        clean_text = text.strip()
-        results.append(clean_text)
-        
-        print(f"枠 {i+1} : {clean_text}")
-        
-    return results
+            self.btn_roi.config(state=tk.NORMAL)
+            self.rois = []
+            self.btn_calc.config(state=tk.DISABLED)
 
-# ==========================================
-#   ここから下が実行部分です
-# ==========================================
+    def set_rois(self):
+        self.root.withdraw() 
+        try:
+            # ★ 別のファイルに分けた「範囲指定機能」を使います！
+            selector = PDFSelector()
+            selected_rois = selector.select(self.pdf_path)
+            
+            if selected_rois:
+                self.rois = selected_rois
+                messagebox.showinfo("成功です！", f"{len(self.rois)} 箇所の範囲を覚えました！")
+                self.btn_calc.config(state=tk.NORMAL)
+            else:
+                messagebox.showwarning("キャンセル", "範囲が選ばれませんでした…")
+        except Exception as e:
+            messagebox.showerror("えれぇ…っ（エラー）", f"画面が開けませんでした…\n{e}")
+        self.root.deiconify() 
 
+    def calculate_data(self):
+        if not self.pdf_path or not self.rois:
+            return
+            
+        # ★ もう一つのファイルに分けた「計算機能」にお願いします！
+        result_text, success = extract_and_calculate(self.pdf_path, self.rois)
+        
+        if success:
+            messagebox.showinfo("計算結果です！", result_text)
+        else:
+            messagebox.showerror("えれぇ…っ（エラー）", result_text)
+
+# ここからスタートです
 if __name__ == "__main__":
-    current_folder = os.path.dirname(os.path.abspath(__file__))
-    
-    # 実際のファイル名に合わせて書き換えてくださいね
-    pdf_filename = "sample.pdf" 
-    target_pdf = os.path.join(current_folder, pdf_filename)
-    
-    extracted_data = select_and_extract_text(target_pdf)
-    
-    if extracted_data:
-        print("-----------------------")
-        print("大成功です！すべての読み取りが完了しました！")
+    root = tk.Tk()
+    app = DangoDocumentScanner(root)
+    root.mainloop()
