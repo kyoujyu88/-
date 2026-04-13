@@ -16,9 +16,14 @@ class PDFSelector:
         self.textpage = None
         self.scale = 1.5
         
-        # 新しく追加するプレビュー画面のためのメモ帳です
         self.info_window = None
         self.lbl_preview = None
+        # ★ 脱出するためのフラグです
+        self.is_running = True
+
+    def on_close_window(self):
+        """プレビュー画面の「×」が押された時に呼ばれる関数です"""
+        self.is_running = False
 
     def redraw_image(self):
         """現在の枠をすべて描き直す裏方さんです"""
@@ -50,7 +55,6 @@ class PDFSelector:
                 self.rois.append((rx, ry, w, h))
                 self.redraw_image()
 
-                # --- 読み取ってリアルタイムで表示します！ ---
                 pdf_left = rx / self.scale
                 pdf_right = (rx + w) / self.scale
                 pdf_top = self.pdf_h - (ry / self.scale)
@@ -60,14 +64,15 @@ class PDFSelector:
                     text = self.textpage.get_text_bounded(left=pdf_left, bottom=pdf_bottom, right=pdf_right, top=pdf_top)
                     clean_text = text.strip()
                     
-                    # 邪魔なOKボタンの代わりに、プレビュー画面の文字をパッと書き換えます！
-                    if self.lbl_preview:
+                    if self.lbl_preview and self.lbl_preview.winfo_exists():
                         if clean_text:
                             self.lbl_preview.config(text=f"枠{len(self.rois)} :  {clean_text}", fg="blue")
                         else:
                             self.lbl_preview.config(text=f"枠{len(self.rois)} :  (文字が見つかりません…)", fg="red")
 
     def select(self, pdf_path, existing_rois=None):
+        self.is_running = True # 実行フラグをリセットします
+        
         if existing_rois:
             self.rois = existing_rois.copy()
         else:
@@ -85,56 +90,57 @@ class PDFSelector:
         pil_image = bitmap.to_pil()
         self.clean_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         
-        # ==========================================
-        # ★ 新機能：使い方＆プレビュー専用の画面を開きます！
-        # ==========================================
+        # --- 使い方画面の作成 ---
         self.info_window = tk.Toplevel()
         self.info_window.title("使い方 ＆ プレビュー")
         self.info_window.geometry("380x200")
-        # OpenCVの裏に隠れないように、常に一番手前に表示させる魔法です
         self.info_window.attributes("-topmost", True)
         
-        # 使い方の表示
+        # ★ ここで「×」ボタンが押された時の処理を登録します！
+        self.info_window.protocol("WM_DELETE_WINDOW", self.on_close_window)
+        
         tk.Label(self.info_window, text="【 使い方 】", font=("MS UI Gothic", 12, "bold")).pack(pady=(10, 5))
         instructions = "1. マウスでドラッグして枠を囲む\n2. 「c」キーで一つ前の枠を消す\n3. 「Enter」キーで決定して完了する"
         tk.Label(self.info_window, text=instructions, justify="left", font=("MS UI Gothic", 10)).pack()
         
-        # プレビューの表示
         tk.Label(self.info_window, text="【 読み取りプレビュー 】", font=("MS UI Gothic", 12, "bold"), fg="blue").pack(pady=(15, 5))
         self.lbl_preview = tk.Label(self.info_window, text="(枠を囲むとここに結果がすぐ出ます)", font=("MS UI Gothic", 14, "bold"))
         self.lbl_preview.pack()
-
-        # ==========================================
 
         cv2.namedWindow("PDF Selector")
         cv2.setMouseCallback("PDF Selector", self.mouse_callback)
         self.redraw_image()
         
-        while True:
-            # 待ち時間を10ミリ秒にしてキーボードを見張ります
+        while self.is_running:
             key = cv2.waitKey(10) & 0xFF
-            if key == 13: # Enterキー
+            
+            # Enterキー
+            if key == 13: 
                 break
+                
+            # cキー（取り消し）
             elif key == ord('c'):
                 if self.rois:
                     self.rois.pop()
                     self.redraw_image()
-                    # cキーで消した時も、画面にメッセージを出します
-                    if self.lbl_preview:
+                    if self.lbl_preview and self.lbl_preview.winfo_exists():
                         self.lbl_preview.config(text="一つ前の枠を取り消しました！", fg="gray")
             
-            # ★ OpenCVの画面を開きながら、プレビュー画面も同時に動かし続けます
+            # ★ OpenCVの画面が「×」で閉じられたかチェックします
+            if cv2.getWindowProperty("PDF Selector", cv2.WND_PROP_VISIBLE) < 1:
+                break
+            
             try:
                 self.info_window.update()
             except tk.TclError:
-                # ユーザーがプレビュー画面の「×」ボタンを押してしまった時は無視します
-                pass
+                # プレビュー画面が破壊された場合はループを抜けます
+                break
                 
+        # 全ての画面を後片付けします
         cv2.destroyAllWindows()
-        
-        # 枠選びが終わったら、プレビュー画面も一緒に閉じます
         try:
-            self.info_window.destroy()
+            if self.info_window.winfo_exists():
+                self.info_window.destroy()
         except:
             pass
             
